@@ -15,11 +15,11 @@
 
 - [1. Presentation & Philosophie](#1-presentation--philosophie)
 - [2. Architecture Technique & Flux de Donnees](#2-architecture-technique--flux-de-donnees)
-- [3. Demarrage Rapide](#3-demarrage-rapide)
+- [3. Deploiement 1-Clic sur VPS (Recommande)](#3-deploiement-1-clic-sur-vps-recommande)
 - [4. Reference de l'API REST & Ingestion](#4-reference-de-lapi-rest--ingestion)
 - [5. Moteur Cryptographique & Signatures HMAC](#5-moteur-cryptographique--signatures-hmac)
 - [6. Reference du CLI ZeroDrop](#6-reference-du-cli-zerodrop)
-- [7. Guide de Deploiement & Self-Hosting](#7-guide-de-deploiement--self-hosting)
+- [7. Guide de Deploiement Manuel & Self-Hosting](#7-guide-de-deploiement-manuel--self-hosting)
 - [8. CI/CD sur Self-Hosted Runner (VM Privee)](#8-cicd-sur-self-hosted-runner-vm-privee)
 - [9. Cross-Compilation Multi-OS](#9-cross-compilation-multi-os)
 - [10. Strategie de Tests & Assurance Qualite](#10-strategie-de-tests--assurance-qualite)
@@ -72,23 +72,20 @@
 
 ---
 
-## 3. Demarrage Rapide
+## 3. Deploiement 1-Clic sur VPS (Recommande)
 
-### Option A : Execution du binaire pre-compile
+Sur votre VPS Linux neuf (Ubuntu ou Debian), executez simplement ces 3 lignes :
+
 ```bash
-# Lancement du serveur et du Dashboard Web sur http://localhost:8080
-./bin/zerodrop.exe serve -port 8080
+git clone https://github.com/nosleepman1/zerodrop.git
+cd zerodrop
+sudo chmod +x deploy/install.sh && sudo ./deploy/install.sh
 ```
 
-### Option B : Execution avec Go
-```bash
-go run . serve -port 8080
-```
-
-### Option C : Deploiement avec Docker Compose
-```bash
-docker compose up -d
-```
+Le script installe automatiquement :
+1. Docker ou Go selon votre choix.
+2. Le serveur web Caddy avec **certificats SSL Let's Encrypt gratuits** generes a la volee.
+3. Le pare-feu et le service ZeroDrop en tâche de fond permanente.
 
 ---
 
@@ -199,7 +196,7 @@ Affiche le numero de version et les informations de build.
 
 ---
 
-## 7. Guide de Deploiement & Self-Hosting
+## 7. Guide de Deploiement Manuel & Self-Hosting
 
 ### A. Deploiement Docker Compose (Production)
 ```yaml
@@ -277,8 +274,6 @@ L'integralite de la chaîne d'integration continue et de publication de releases
    sudo ./svc.sh start
    ```
 
-> Les workflows `.github/workflows/ci.yml` (tests automatiques sur push/PR) et `.github/workflows/release.yml` (publication de releases avec binaires sur les tags `v*`) s'executeront directement sur votre VM !
-
 ---
 
 ## 9. Cross-Compilation Multi-OS
@@ -293,13 +288,6 @@ Generez l'ensemble des binaires natifs en local sans consommer de minutes GitHub
 ./scripts/build-all.sh
 ```
 
-Binaires generes dans `./bin/` :
-- `bin/zerodrop-windows-amd64.exe` (Windows 64-bit)
-- `bin/zerodrop-linux-amd64` (Linux x86_64)
-- `bin/zerodrop-linux-arm64` (Linux ARM64 / Raspberry Pi)
-- `bin/zerodrop-darwin-arm64` (macOS Apple Silicon M1/M2/M3/M4)
-- `bin/zerodrop-darwin-amd64` (macOS Intel)
-
 ---
 
 ## 10. Strategie de Tests & Assurance Qualite
@@ -310,13 +298,6 @@ L'ensemble des modules fait l'objet d'une couverture de tests automatisee :
 # Execution de la suite complete
 go test ./... -v
 ```
-
-- `internal/api` : Tests d'integration HTTP (Ingestion, CRUD, Rejeu, Healthcheck).
-- `internal/database` : Tests de transactions concurrentes, migrations et suppressions en cascade.
-- `internal/hub` : Tests du modèle concurrent Goroutines/Channels et retransmissions WebSockets.
-- `internal/replay` : Tests du moteur de rejeu avec serveurs HTTP fictifs et gestion des erreurs reseau.
-- `internal/security` : Tests exhaustifs des validateurs HMAC et protections anti-rejeu.
-- `internal/tunnel` : Tests de generation des charges utiles et calcul des signatures.
 
 ---
 
