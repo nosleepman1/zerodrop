@@ -24,7 +24,6 @@ data/
 
 # Node & Frontend
 node_modules/
-ui/dist/
 ui/node_modules/
 .pnp
 .pnp.js
