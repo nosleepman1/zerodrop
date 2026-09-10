@@ -1,4 +1,6 @@
-﻿package main
+﻿// Package main fournit le point d'entrée CLI unifié pour l'exécutable ZeroDrop.
+// Il orchestre les sous-commandes 'serve', 'listen', 'trigger' et 'version'.
+package main
 
 import (
 	"flag"
@@ -17,6 +19,7 @@ import (
 	"github.com/nosleepman1/zerodrop/internal/tunnel"
 )
 
+// Version correspond au numéro de version actuel de ZeroDrop.
 const Version = "0.1.0"
 
 func printBanner() {
@@ -27,8 +30,8 @@ func printBanner() {
     / /  __/ /  / /_/ // /_/ / /  / /_/ / /_/ /
    /_/\___/_/   \____/_____/_/    \____/ .___/ 
                                       /_/      
-   ⚡ High-Performance Webhook Replay & Tunnel Engine`)
-	fmt.Printf("   Version : %s | MIT License © nosleepman1\n\n", Version)
+   ZeroDrop - High-Performance Webhook Replay & Tunnel Engine`)
+	fmt.Printf("   Version : %s | Licence MIT - nosleepman1\n\n", Version)
 }
 
 func printUsage() {
@@ -37,13 +40,13 @@ func printUsage() {
 	fmt.Println("  zerodrop [commande] [options]")
 	fmt.Println("")
 	fmt.Println("Commandes disponibles :")
-	fmt.Println("  serve      Démarre le serveur d'ingestion, le Hub WebSockets et le Dashboard (par défaut)")
-	fmt.Println("  listen     Démarre l'agent de tunneling pour relayer les webhooks vers localhost")
-	fmt.Println("  trigger    Émet un webhook de test simulé (Stripe, GitHub, etc.) avec signature HMAC")
+	fmt.Println("  serve      Demarre le serveur d'ingestion, le Hub WebSockets et le Dashboard (par defaut)")
+	fmt.Println("  listen     Demarre l'agent de tunneling pour relayer les webhooks vers localhost")
+	fmt.Println("  trigger    Emet un webhook de test simule (Stripe, GitHub, etc.) avec signature HMAC")
 	fmt.Println("  version    Affiche la version actuelle de ZeroDrop")
 	fmt.Println("")
-	fmt.Println("Exemples :")
-	fmt.Println("  zerodrop serve -port 8080")
+	fmt.Println("Exemples d'utilisation :")
+	fmt.Println("  zerodrop serve -port 8080 -db /data/zerodrop.db")
 	fmt.Println("  zerodrop listen -forward-to http://localhost:3000/api/webhook")
 	fmt.Println("  zerodrop trigger -provider stripe -event payment_intent.succeeded")
 	fmt.Println("")
@@ -68,7 +71,6 @@ func main() {
 	case "help", "-h", "--help":
 		printUsage()
 	default:
-		// Si le premier argument commence par '-', c'est une option passée directement à serve
 		if cmd[0] == '-' {
 			runServe(os.Args[1:])
 		} else {
@@ -81,31 +83,27 @@ func main() {
 
 func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	port := fs.String("port", "8080", "Port d'écoute du serveur HTTP")
-	dbPath := fs.String("db", "zerodrop.db", "Chemin vers la base de données SQLite")
+	port := fs.String("port", "8080", "Port d'ecoute du serveur HTTP")
+	dbPath := fs.String("db", "zerodrop.db", "Chemin d'acces vers la base de donnees SQLite")
 	_ = fs.Parse(args)
 
 	printBanner()
-	log.Println("⚡ Démarrage de ZeroDrop Core Server...")
+	log.Println("[INFO] Initialisation de ZeroDrop Core Server...")
 
-	// Initialisation de la base SQLite
 	db, err := database.New(*dbPath)
 	if err != nil {
-		log.Fatalf("❌ Erreur SQLite : %v", err)
+		log.Fatalf("[FATAL] Erreur lors de l'initialisation de SQLite : %v", err)
 	}
 	defer db.Close()
-	log.Printf("💾 Base de données SQLite prête (%s - Mode WAL)", *dbPath)
+	log.Printf("[INFO] Base de donnees SQLite prete (%s - Mode WAL)", *dbPath)
 
-	// Hub WebSockets
 	eventHub := hub.NewHub()
 	go eventHub.Run()
-	log.Println("🔄 Hub WebSockets temps réel actif")
+	log.Println("[INFO] Hub WebSockets temps reel actif")
 
-	// Moteur de rejeu
 	replayEngine := replay.NewEngine(db, eventHub)
-	log.Println("🎯 Moteur de Replay HTTP initialisé")
+	log.Println("[INFO] Moteur de Replay HTTP initialise")
 
-	// Routeur principal
 	router := api.NewRouter(db, eventHub, replayEngine)
 
 	server := &http.Server{
@@ -117,12 +115,12 @@ func runServe(args []string) {
 	}
 
 	go func() {
-		fmt.Printf("\n🚀 Dashboard Web & Hub actifs sur : http://localhost:%s\n", *port)
-		fmt.Printf("📥 URL d'ingestion des webhooks   : http://localhost:%s/in/{slug}\n", *port)
-		fmt.Printf("🔌 Endpoint WebSocket du Tunnel    : ws://localhost:%s/ws/tunnel\n\n", *port)
+		fmt.Printf("\n[INFO] Dashboard Web & Hub actifs sur : http://localhost:%s\n", *port)
+		fmt.Printf("[INFO] URL d'ingestion des webhooks   : http://localhost:%s/in/{slug}\n", *port)
+		fmt.Printf("[INFO] Endpoint WebSocket du Tunnel    : ws://localhost:%s/ws/tunnel\n\n", *port)
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("❌ Erreur serveur : %v", err)
+			log.Fatalf("[FATAL] Erreur du serveur HTTP : %v", err)
 		}
 	}()
 
@@ -130,14 +128,14 @@ func runServe(args []string) {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("🛑 Arrêt du serveur ZeroDrop...")
+	log.Println("[INFO] Arret gracieux du serveur ZeroDrop...")
 }
 
 func runListen(args []string) {
 	fs := flag.NewFlagSet("listen", flag.ExitOnError)
-	forwardTo := fs.String("forward-to", "http://localhost:3000/api/webhook", "URL locale vers laquelle relayer les requêtes")
+	forwardTo := fs.String("forward-to", "http://localhost:3000/api/webhook", "URL locale vers laquelle relayer les requetes")
 	serverURL := fs.String("server", "ws://localhost:8080", "URL du serveur ZeroDrop")
-	endpoint := fs.String("endpoint", "*", "Slug de l'endpoint à écouter (* pour tous)")
+	endpoint := fs.String("endpoint", "*", "Slug de l'endpoint a ecouter (* pour tous)")
 	_ = fs.Parse(args)
 
 	agent := tunnel.NewAgent(tunnel.Config{
@@ -147,7 +145,7 @@ func runListen(args []string) {
 	})
 
 	if err := agent.Start(); err != nil {
-		log.Fatalf("❌ Erreur agent de tunneling : %v", err)
+		log.Fatalf("[FATAL] Erreur de l'agent de tunneling : %v", err)
 	}
 }
 
@@ -155,7 +153,7 @@ func runTrigger(args []string) {
 	fs := flag.NewFlagSet("trigger", flag.ExitOnError)
 	targetURL := fs.String("url", "http://localhost:8080/in/default", "URL d'ingestion ZeroDrop")
 	provider := fs.String("provider", "stripe", "Fournisseur de webhook (stripe, github, custom)")
-	event := fs.String("event", "payment_intent.succeeded", "Nom de l'événement à simuler")
+	event := fs.String("event", "payment_intent.succeeded", "Nom de l'evenement a simuler")
 	secret := fs.String("secret", "", "Secret HMAC optionnel pour signer le payload")
 	_ = fs.Parse(args)
 
@@ -166,6 +164,6 @@ func runTrigger(args []string) {
 		Secret:    *secret,
 	})
 	if err != nil {
-		log.Fatalf("❌ Erreur lors de l'émission : %v", err)
+		log.Fatalf("[FATAL] Erreur lors de l'emission du webhook : %v", err)
 	}
 }

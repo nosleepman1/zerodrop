@@ -1,12 +1,12 @@
 ﻿# Script de cross-compilation locale multi-OS pour ZeroDrop
-# Génère les binaires autonomes sans consommer de quota GitHub Actions.
+# Genere les binaires autonomes sans consommer de quota GitHub Actions.
 
-Write-Host "⚡ [1/2] Build du frontend React..." -ForegroundColor Cyan
+Write-Host "[INFO] [1/2] Build du frontend React..." -ForegroundColor Cyan
 Push-Location ui
 npm run build
 Pop-Location
 
-Write-Host "⚡ [2/2] Compilation des binaires Go multi-plateformes..." -ForegroundColor Cyan
+Write-Host "[INFO] [2/2] Compilation des binaires Go multi-plateformes..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path bin | Out-Null
 
 $targets = @(
@@ -25,10 +25,9 @@ foreach ($t in $targets) {
     go build -ldflags="-s -w" -o $t.Output .
 }
 
-# Restaure les variables d'environnement
 Remove-Item Env:GOOS -ErrorAction SilentlyContinue
 Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
 Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
 
-Write-Host "✅ Tous les binaires ont été générés dans le dossier ./bin/ !" -ForegroundColor Green
+Write-Host "[OK] Tous les binaires ont ete generes avec succes dans le dossier ./bin/ !" -ForegroundColor Green
 Get-ChildItem -Path bin | Select-Object Name, @{Name="Taille (Mo)"; Expression={[math]::Round($_.Length/1MB, 2)}}

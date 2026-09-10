@@ -19,13 +19,10 @@ type RequestsHandler struct {
 
 // NewRequestsHandler instancie le gestionnaire de requêtes.
 func NewRequestsHandler(db *database.DB, re *replay.Engine) *RequestsHandler {
-	return &RequestsHandler{
-		db:           db,
-		replayEngine: re,
-	}
+	return &RequestsHandler{db: db, replayEngine: re}
 }
 
-// List retourne la liste filtrée et paginée des requêtes.
+// List retourne la liste filtrée et paginée des requêtes capturées.
 func (h *RequestsHandler) List(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	limit, _ := strconv.Atoi(query.Get("limit"))
@@ -40,7 +37,7 @@ func (h *RequestsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	requests, err := h.db.ListWebhookRequests(filter)
 	if err != nil {
-		http.Error(w, `{"error": "impossible de récupérer les requêtes"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error": "impossible de recuperer les requetes"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -52,7 +49,7 @@ func (h *RequestsHandler) List(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(requests)
 }
 
-// GetByID retourne les détails complets d'une requête avec son body brut.
+// GetByID retourne les détails complets d'une requête spécifique.
 func (h *RequestsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	req, err := h.db.GetWebhookRequestByID(id)
@@ -61,7 +58,7 @@ func (h *RequestsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req == nil {
-		http.Error(w, `{"error": "requête introuvable"}`, http.StatusNotFound)
+		http.Error(w, `{"error": "requete introuvable"}`, http.StatusNotFound)
 		return
 	}
 
@@ -69,12 +66,12 @@ func (h *RequestsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(req)
 }
 
-// Replay déclenche le rejeu d'une requête spécifique.
+// Replay déclenche le rejeu d'une requête spécifique via le Replay Engine.
 func (h *RequestsHandler) Replay(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	req, err := h.db.GetWebhookRequestByID(id)
 	if err != nil || req == nil {
-		http.Error(w, `{"error": "requête introuvable pour le rejeu"}`, http.StatusNotFound)
+		http.Error(w, `{"error": "requete introuvable pour executer le rejeu"}`, http.StatusNotFound)
 		return
 	}
 
@@ -93,12 +90,12 @@ func (h *RequestsHandler) Replay(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(replayLog)
 }
 
-// GetReplays retourne l'historique des rejeux d'une requête.
+// GetReplays retourne l'historique complet des rejeux exécutés pour une requête.
 func (h *RequestsHandler) GetReplays(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	replays, err := h.db.GetReplaysForRequest(id)
 	if err != nil {
-		http.Error(w, `{"error": "impossible de récupérer les logs de rejeu"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error": "impossible de charger les logs de rejeu"}`, http.StatusInternalServerError)
 		return
 	}
 
@@ -110,11 +107,11 @@ func (h *RequestsHandler) GetReplays(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(replays)
 }
 
-// Clear purge les requêtes de la base de données.
+// Clear purge l'historique des requêtes stockées.
 func (h *RequestsHandler) Clear(w http.ResponseWriter, r *http.Request) {
 	endpointID := r.URL.Query().Get("endpoint_id")
 	if err := h.db.ClearRequests(endpointID); err != nil {
-		http.Error(w, `{"error": "impossible de purger les requêtes"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error": "impossible de purger les requetes"}`, http.StatusInternalServerError)
 		return
 	}
 

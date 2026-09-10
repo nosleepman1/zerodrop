@@ -1,4 +1,6 @@
-﻿package tunnel
+﻿// Package tunnel fournit l'agent client de tunneling local permettant aux développeurs
+// de recevoir instantanément sur leur machine (localhost) les requêtes webhooks capturées dans le cloud.
+package tunnel
 
 import (
 	"bytes"
@@ -18,21 +20,28 @@ import (
 	"github.com/nosleepman1/zerodrop/internal/models"
 )
 
-// Config regroupe les paramètres pour l'agent de tunneling local.
+// Config regroupe les paramètres de configuration pour l'agent de tunneling local.
 type Config struct {
-	ServerURL    string            // ex: ws://localhost:8080 ou wss://zerodrop.mon-domaine.com
-	EndpointSlug string            // Slug de l'endpoint à écouter (ex: "default", "stripe-dev", ou "*")
-	ForwardTo    string            // URL locale de destination (ex: "http://localhost:3000/api/webhook")
-	CustomHeaders map[string]string // En-têtes personnalisés additionnels à injecter
+	// ServerURL est l'URL du hub ZeroDrop (ex: ws://localhost:8080 ou wss://webhooks.domaine.com).
+	ServerURL string
+
+	// EndpointSlug est le slug d'endpoint spécifique à écouter (ex: "default", "stripe-dev", ou "*").
+	EndpointSlug string
+
+	// ForwardTo est l'URL locale vers laquelle acheminer les requêtes (ex: "http://localhost:3000/api/webhook").
+	ForwardTo string
+
+	// CustomHeaders contient les en-têtes HTTP personnalisés à injecter lors de la redirection locale.
+	CustomHeaders map[string]string
 }
 
-// Agent représente le client WebSocket de tunneling local.
+// Agent représente l'agent de tunneling local gérant la liaison WebSocket persistante.
 type Agent struct {
 	config     Config
 	httpClient *http.Client
 }
 
-// NewAgent instancie un nouvel agent de tunneling.
+// NewAgent instancie un nouvel agent de tunneling local.
 func NewAgent(cfg Config) *Agent {
 	return &Agent{
 		config: cfg,
@@ -42,9 +51,8 @@ func NewAgent(cfg Config) *Agent {
 	}
 }
 
-// Start démarre la boucle de connexion persistante du tunnel avec reconnexion automatique.
+// Start établit la connexion au Hub WebSocket et boucle avec reconnexion automatique en cas de coupure réseau.
 func (a *Agent) Start() error {
-	// Préparation de l'URL WebSocket
 	serverURL := a.config.ServerURL
 	if !strings.HasPrefix(serverURL, "ws://") && !strings.HasPrefix(serverURL, "wss://") {
 		if strings.HasPrefix(serverURL, "http://") {
@@ -64,29 +72,28 @@ func (a *Agent) Start() error {
 	wsURL := fmt.Sprintf("%s/ws/tunnel?slug=%s", strings.TrimSuffix(serverURL, "/"), url.QueryEscape(slug))
 
 	fmt.Println("================================================================")
-	fmt.Printf("⚡ ZeroDrop Tunnel Agent — Relai Local Haute Performance\n")
-	fmt.Printf("📡 Hub distant      : %s\n", serverURL)
-	fmt.Printf("🎯 Endpoint écouté  : %s\n", slug)
-	fmt.Printf("🔀 Redirection vers : %s\n", a.config.ForwardTo)
+	fmt.Printf("[INFO] ZeroDrop Tunnel Agent - Relai Local de Webhooks\n")
+	fmt.Printf("[INFO] Hub distant      : %s\n", serverURL)
+	fmt.Printf("[INFO] Endpoint ecoute  : %s\n", slug)
+	fmt.Printf("[INFO] Redirection vers : %s\n", a.config.ForwardTo)
 	fmt.Println("================================================================")
-	fmt.Println("🟢 En attente de webhooks entrants... (Ctrl+C pour quitter)")
+	fmt.Println("[INFO] En attente de requetes webhooks... (Ctrl+C pour quitter)")
 
-	// Gestion de l'interruption (Ctrl+C)
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
 	for {
 		err := a.connectAndListen(wsURL, interrupt)
 		if err != nil {
-			log.Printf("⚠️ Connexion au Hub interrompue : %v. Reconnexion dans 3 secondes...", err)
+			log.Printf("[WARN] Connexion WebSocket interrompue : %v. Reconnexion automatique dans 3s...", err)
 		}
 
 		select {
 		case <-interrupt:
-			fmt.Println("\n🛑 Arrêt du tunnel local...")
+			fmt.Println("\n[INFO] Arret de l'agent de tunneling local.")
 			return nil
 		case <-time.After(3 * time.Second):
-			// Nouvelle tentative de connexion
+			// Nouvelle tentative de reconnexion
 		}
 	}
 }
@@ -94,15 +101,14 @@ func (a *Agent) Start() error {
 func (a *Agent) connectAndListen(wsURL string, interrupt chan os.Signal) error {
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
-		return fmt.Errorf("impossible d'établir la connexion WebSocket : %w", err)
+		return fmt.Errorf("echec de connexion au Hub distant : %w", err)
 	}
 	defer conn.Close()
 
-	log.Printf("✅ Connecté avec succès au Hub ZeroDrop ! Prêt à relayer vers %s", a.config.ForwardTo)
+	log.Printf("[OK] Connexion etablie avec succes au Hub. Relai actif vers %s", a.config.ForwardTo)
 
 	done := make(chan struct{})
 
-	// Goroutine de lecture des messages envoyés par le Hub
 	go func() {
 		defer close(done)
 		for {
@@ -117,7 +123,6 @@ func (a *Agent) connectAndListen(wsURL string, interrupt chan os.Signal) error {
 			}
 
 			if wsMsg.Type == models.EventTunnelForward {
-				// Désérialisation de la requête webhook à transférer
 				reqBytes, _ := json.Marshal(wsMsg.Payload)
 				var req models.WebhookRequest
 				if err := json.Unmarshal(reqBytes, &req); err == nil {
@@ -129,25 +134,24 @@ func (a *Agent) connectAndListen(wsURL string, interrupt chan os.Signal) error {
 
 	select {
 	case <-done:
-		return fmt.Errorf("connexion fermée par le serveur")
+		return fmt.Errorf("connexion fermee par le serveur distant")
 	case <-interrupt:
 		_ = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		return nil
 	}
 }
 
-// forwardLocally retransmet la requête HTTP reçue vers l'URL locale du développeur.
+// forwardLocally réémet la requête reçue vers l'URL locale cible et affiche les métriques dans le terminal.
 func (a *Agent) forwardLocally(req models.WebhookRequest) {
 	startTime := time.Now()
 
 	targetURL := a.config.ForwardTo
 	httpReq, err := http.NewRequest(req.Method, targetURL, bytes.NewBufferString(req.RawBody))
 	if err != nil {
-		log.Printf("❌ [%s] Erreur création requête vers %s : %v", req.Method, targetURL, err)
+		log.Printf("[ERROR] [%s] Impossible de creer la requete vers %s : %v", req.Method, targetURL, err)
 		return
 	}
 
-	// Copie des en-têtes d'origine (sauf hop-by-hop)
 	for k, values := range req.Headers {
 		lower := strings.ToLower(k)
 		if lower == "host" || lower == "content-length" || lower == "transfer-encoding" || lower == "connection" {
@@ -158,7 +162,6 @@ func (a *Agent) forwardLocally(req models.WebhookRequest) {
 		}
 	}
 
-	// En-têtes personnalisés additionnels
 	for k, v := range a.config.CustomHeaders {
 		httpReq.Header.Set(k, v)
 	}
@@ -166,30 +169,29 @@ func (a *Agent) forwardLocally(req models.WebhookRequest) {
 	httpReq.Header.Set("X-ZeroDrop-Forwarded", "true")
 	httpReq.Header.Set("X-ZeroDrop-Request-ID", req.ID)
 
-	// Exécution HTTP locale
 	resp, err := a.httpClient.Do(httpReq)
 	duration := time.Since(startTime).Milliseconds()
 
 	timeStr := time.Now().Format("15:04:05")
 
 	if err != nil {
-		fmt.Printf("🔴 [%s] %s | %s /in/%s -> %s (ERR: %v) [%dms]\n",
-			timeStr, "CONN_FAIL", req.Method, req.EndpointSlug, targetURL, err, duration,
+		fmt.Printf("[%s] [ERROR] %s /in/%s -> %s (ERR: %v) [%dms]\n",
+			timeStr, req.Method, req.EndpointSlug, targetURL, err, duration,
 		)
 		return
 	}
 	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body) // Épuise le body pour libérer la connexion
+	_, _ = io.ReadAll(resp.Body)
 
-	statusEmoji := "🟢"
+	statusTag := "[OK]"
 	if resp.StatusCode >= 400 {
-		statusEmoji = "🟡"
+		statusTag = "[WARN]"
 	}
 	if resp.StatusCode >= 500 {
-		statusEmoji = "🔴"
+		statusTag = "[ERROR]"
 	}
 
-	fmt.Printf("%s [%s] %d %s | %s /in/%s -> %s [%dms]\n",
-		statusEmoji, timeStr, resp.StatusCode, http.StatusText(resp.StatusCode), req.Method, req.EndpointSlug, targetURL, duration,
+	fmt.Printf("[%s] %s %d %s | %s /in/%s -> %s [%dms]\n",
+		timeStr, statusTag, resp.StatusCode, http.StatusText(resp.StatusCode), req.Method, req.EndpointSlug, targetURL, duration,
 	)
 }

@@ -8,9 +8,9 @@ import (
 )
 
 func main() {
-	forwardTo := flag.String("forward-to", "http://localhost:3000/api/webhook", "URL locale vers laquelle relayer les requêtes")
+	forwardTo := flag.String("forward-to", "http://localhost:3000/api/webhook", "URL locale vers laquelle relayer les requetes")
 	serverURL := flag.String("server", "ws://localhost:8080", "URL du serveur ZeroDrop")
-	endpoint := flag.String("endpoint", "*", "Slug de l'endpoint à écouter")
+	endpoint := flag.String("endpoint", "*", "Slug de l'endpoint a ecouter")
 	flag.Parse()
 
 	agent := tunnel.NewAgent(tunnel.Config{
@@ -20,6 +20,6 @@ func main() {
 	})
 
 	if err := agent.Start(); err != nil {
-		log.Fatalf("❌ Erreur de tunneling : %v", err)
+		log.Fatalf("[FATAL] Erreur agent de tunneling : %v", err)
 	}
 }

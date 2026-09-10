@@ -2,10 +2,10 @@
 # Script de cross-compilation locale multi-OS pour ZeroDrop
 set -e
 
-echo "⚡ [1/2] Build du frontend React..."
+echo "[INFO] [1/2] Build du frontend React..."
 cd ui && npm run build && cd ..
 
-echo "⚡ [2/2] Compilation des binaires Go multi-plateformes..."
+echo "[INFO] [2/2] Compilation des binaires Go multi-plateformes..."
 mkdir -p bin
 
 targets=(
@@ -22,5 +22,5 @@ for target in "${targets[@]}"; do
     CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags="-s -w" -o "$output" .
 done
 
-echo "✅ Tous les binaires ont été générés dans le dossier ./bin/ !"
+echo "[OK] Tous les binaires ont ete generes dans le dossier ./bin/ !"
 ls -lh bin/

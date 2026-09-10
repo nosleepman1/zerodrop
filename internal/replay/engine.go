@@ -1,4 +1,7 @@
-﻿package replay
+﻿// Package replay implémente le moteur d'exécution des rejeux de requêtes HTTP.
+// Il permet de réémettre fidèlement des webhooks capturés vers des cibles locales ou distantes,
+// en conservant les en-têtes d'origine et en supportant la mutation de charge utile.
+package replay
 
 import (
 	"bytes"
@@ -14,14 +17,14 @@ import (
 	"github.com/nosleepman1/zerodrop/internal/models"
 )
 
-// Engine gère l'exécution des rejeux et des transferts de webhooks.
+// Engine encapsule le client HTTP haut débit et les dépendances vers la persistance et le hub d'événements.
 type Engine struct {
 	db     *database.DB
 	hub    *hub.Hub
 	client *http.Client
 }
 
-// NewEngine initialise le moteur de rejeu avec un client HTTP configuré pour la haute performance.
+// NewEngine initialise un nouveau moteur de rejeu doté d'un pool de connexions HTTP réutilisables.
 func NewEngine(db *database.DB, hub *hub.Hub) *Engine {
 	transport := &http.Transport{
 		MaxIdleConns:        100,
@@ -41,11 +44,18 @@ func NewEngine(db *database.DB, hub *hub.Hub) *Engine {
 	}
 }
 
-// ReplayRequest réémet une requête webhook capturée vers une URL cible.
+// ReplayRequest réémet une requête webhook capturée vers une URL cible spécifiée ou par défaut.
+//
+// Processus :
+//  1. Détermination de l'URL cible (priorité à TargetURL du payload, puis ForwardURL de l'endpoint).
+//  2. Sélection du corps de requête (corps original ou corps modifié fourni dans payload.ModifiedBody).
+//  3. Recréation de la requête HTTP en filtrant les en-têtes de transport ("hop-by-hop").
+//  4. Injection des en-têtes de traçabilité ZeroDrop (X-ZeroDrop-Replay, X-ZeroDrop-Original-ID).
+//  5. Mesure de la latence, capture du code de réponse et sauvegarde du journal dans SQLite.
+//  6. Diffusion de l'événement EVENT_REPLAY_RESULT sur le flux WebSocket.
 func (e *Engine) ReplayRequest(req *models.WebhookRequest, payload models.TriggerReplayPayload) (*models.ReplayLog, error) {
 	targetURL := payload.TargetURL
-	if targetURL == "" {
-		// Récupération de l'URL de redirection par défaut de l'endpoint
+	if targetURL == "" && e.db != nil {
 		ep, err := e.db.GetEndpointByID(req.EndpointID)
 		if err == nil && ep != nil && ep.ForwardURL != "" {
 			targetURL = ep.ForwardURL
@@ -53,22 +63,20 @@ func (e *Engine) ReplayRequest(req *models.WebhookRequest, payload models.Trigge
 	}
 
 	if targetURL == "" {
-		return nil, fmt.Errorf("aucune URL cible définie pour le rejeu")
+		return nil, fmt.Errorf("aucune URL cible valide specifiee pour executer le rejeu")
 	}
 
-	// Corps de la requête (original ou muté)
 	bodyToSend := req.RawBody
 	if payload.ModifiedBody != nil {
 		bodyToSend = *payload.ModifiedBody
 	}
 
-	// Préparation de la requête HTTP
 	httpReq, err := http.NewRequest(req.Method, targetURL, bytes.NewBufferString(bodyToSend))
 	if err != nil {
-		return nil, fmt.Errorf("impossible de construire la requête HTTP de rejeu : %w", err)
+		return nil, fmt.Errorf("erreur de construction de la requete HTTP de rejeu : %w", err)
 	}
 
-	// Transfert des en-têtes d'origine (en excluant les en-têtes hop-by-hop)
+	// Filtrage des en-têtes hop-by-hop pour laisser la couche transport Go les recalculer
 	for key, values := range req.Headers {
 		lowerKey := strings.ToLower(key)
 		if lowerKey == "host" || lowerKey == "content-length" || lowerKey == "transfer-encoding" || lowerKey == "connection" {
@@ -79,16 +87,15 @@ func (e *Engine) ReplayRequest(req *models.WebhookRequest, payload models.Trigge
 		}
 	}
 
-	// Ajout des en-têtes personnalisés additionnels
+	// Injection des en-têtes additionnels personnalisés
 	for key, val := range payload.CustomHeaders {
 		httpReq.Header.Set(key, val)
 	}
 
-	// Marqueur d'identification ZeroDrop
+	// En-têtes de métadonnées ZeroDrop
 	httpReq.Header.Set("X-ZeroDrop-Replay", "true")
 	httpReq.Header.Set("X-ZeroDrop-Original-ID", req.ID)
 
-	// Mesure du temps d'exécution
 	startTime := time.Now()
 	resp, err := e.client.Do(httpReq)
 	duration := time.Since(startTime).Milliseconds()
@@ -110,17 +117,16 @@ func (e *Engine) ReplayRequest(req *models.WebhookRequest, payload models.Trigge
 		replayLog.StatusCode = resp.StatusCode
 		replayLog.ResponseHeaders = resp.Header
 
-		// Lecture du corps de réponse (limité à 1 Mo)
 		respBodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 		if readErr == nil {
 			replayLog.ResponseBody = string(respBodyBytes)
 		}
 	}
 
-	// Sauvegarde dans SQLite
-	_ = e.db.SaveReplayLog(replayLog)
+	if e.db != nil {
+		_ = e.db.SaveReplayLog(replayLog)
+	}
 
-	// Diffusion de l'événement de rejeu sur le Hub WebSocket
 	if e.hub != nil {
 		e.hub.BroadcastEvent(models.EventReplayResult, replayLog)
 	}

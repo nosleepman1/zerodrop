@@ -9,23 +9,30 @@ import (
 )
 
 const (
-	// Délais de temporisation pour les connexions WebSockets
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512 * 1024 // 512 Ko
+	// writeWait définit le délai d'attente maximal pour l'écriture d'un message sur la socket.
+	writeWait = 10 * time.Second
+
+	// pongWait définit le délai d'attente maximal pour la réception d'un battement de cœur Pong.
+	pongWait = 60 * time.Second
+
+	// pingPeriod définit l'intervalle d'envoi périodique des pings vers le client.
+	pingPeriod = (pongWait * 9) / 10
+
+	// maxMessageSize est la taille maximale autorisée d'un message entrant (512 Ko).
+	maxMessageSize = 512 * 1024
 )
 
+// upgrader configure les paramètres de mise à niveau de connexion HTTP vers WebSocket.
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// Autorise les connexions locales et dashboard (CORS permissif pour le dev)
+		// Autorise les connexions multi-origines pour le développement local et les tunnels distants
 		return true
 	},
 }
 
-// Client représente une connexion WebSocket active (UI ou CLI).
+// Client représente une connexion WebSocket active, encapsulant les buffers de lecture et d'écriture.
 type Client struct {
 	hub          *Hub
 	conn         *websocket.Conn
@@ -34,11 +41,11 @@ type Client struct {
 	endpointSlug string
 }
 
-// ReadPump écoute les messages entrants du client (pings/pongs ou réponses tunnel).
+// ReadPump écoute en continu les trames entrantes pour maintenir la connexion et gérer les pings/pongs.
 func (c *Client) ReadPump() {
 	defer func() {
 		c.hub.unregister <- c
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
@@ -52,19 +59,19 @@ func (c *Client) ReadPump() {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Erreur WebSocket inattendue : %v", err)
+				log.Printf("[WS] Fermeture inattendue de connexion : %v", err)
 			}
 			break
 		}
 	}
 }
 
-// WritePump envoie les messages du canal send vers la connexion WebSocket.
+// WritePump assure l'acheminement des messages sérialisés du canal send vers la socket WebSocket.
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		_ = c.conn.Close()
 	}()
 
 	for {
@@ -72,7 +79,7 @@ func (c *Client) WritePump() {
 		case message, ok := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// Le Hub a fermé le canal
+				// Le canal a été fermé par le Hub
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -83,7 +90,7 @@ func (c *Client) WritePump() {
 			}
 			_, _ = w.Write(message)
 
-			// Envoie des messages en attente dans le même frame
+			// Vidage des messages supplémentaires en attente dans le même paquet
 			n := len(c.send)
 			for i := 0; i < n; i++ {
 				_, _ = w.Write([]byte{'\n'})
@@ -103,11 +110,11 @@ func (c *Client) WritePump() {
 	}
 }
 
-// ServeWS instancie et attache un nouveau Client WebSocket au Hub.
+// ServeWS orchestre la mise à niveau HTTP -> WebSocket et associe le Client au Hub.
 func ServeWS(hub *Hub, w http.ResponseWriter, r *http.Request, isTunnel bool, endpointSlug string) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("Échec de mise à niveau WebSocket : %v", err)
+		log.Printf("[ERROR] Echec de mise a niveau WebSocket : %v", err)
 		return
 	}
 

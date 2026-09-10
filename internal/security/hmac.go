@@ -1,4 +1,6 @@
-﻿package security
+﻿// Package security implémente les mécanismes de vérification cryptographique des signatures HMAC
+// pour valider l'authenticité et l'intégrité des charges utiles reçues de fournisseurs tiers.
+package security
 
 import (
 	"crypto/hmac"
@@ -11,13 +13,25 @@ import (
 	"time"
 )
 
-// ToleranceStripe correspond au délai maximal autorisé pour la signature Stripe (5 minutes par défaut).
+// ToleranceStripe définit la fenêtre temporelle maximale d'acceptation des webhooks Stripe (5 minutes).
+// Cette tolérance permet de se prémunir contre les attaques par rejeu (replay attacks).
 const ToleranceStripe = 5 * time.Minute
 
-// VerifySignature dispatche la vérification selon le type de provider spécifié.
+// VerifySignature sélectionne et exécute l'algorithme de validation cryptographique adapté
+// en fonction du fournisseur déclaré sur l'endpoint.
+//
+// Paramètres :
+//   - provider : Type de fournisseur ('stripe', 'github', 'shopify', 'slack' ou 'custom').
+//   - payload  : Corps brut de la requête HTTP en octets (doit être non tronqué).
+//   - headers  : En-têtes HTTP de la requête entrante.
+//   - secret   : Clé secrète partagée configurée sur l'endpoint.
+//
+// Retourne :
+//   - bool : true si la signature est rigoureusement valide, false sinon.
+//   - error: description de l'anomalie cryptographique ou de formatage en cas d'échec.
 func VerifySignature(provider string, payload []byte, headers map[string][]string, secret string) (bool, error) {
 	if secret == "" {
-		// Aucun secret configuré, pas de vérification nécessaire.
+		// Aucun secret configuré, la validation est ignorée.
 		return true, nil
 	}
 
@@ -26,7 +40,7 @@ func VerifySignature(provider string, payload []byte, headers map[string][]strin
 	case "stripe":
 		sigHeader := getHeader(headers, "Stripe-Signature")
 		if sigHeader == "" {
-			return false, fmt.Errorf("en-tête Stripe-Signature manquant")
+			return false, fmt.Errorf("en-tete 'Stripe-Signature' manquant")
 		}
 		return VerifyStripeSignature(payload, sigHeader, secret, ToleranceStripe)
 
@@ -36,14 +50,14 @@ func VerifySignature(provider string, payload []byte, headers map[string][]strin
 			sigHeader = getHeader(headers, "X-Hub-Signature")
 		}
 		if sigHeader == "" {
-			return false, fmt.Errorf("en-tête X-Hub-Signature-256 manquant")
+			return false, fmt.Errorf("en-tete 'X-Hub-Signature-256' manquant")
 		}
 		return VerifyGitHubSignature(payload, sigHeader, secret)
 
 	case "shopify":
 		sigHeader := getHeader(headers, "X-Shopify-Hmac-Sha256")
 		if sigHeader == "" {
-			return false, fmt.Errorf("en-tête X-Shopify-Hmac-Sha256 manquant")
+			return false, fmt.Errorf("en-tete 'X-Shopify-Hmac-Sha256' manquant")
 		}
 		return VerifyShopifySignature(payload, sigHeader, secret)
 
@@ -51,12 +65,12 @@ func VerifySignature(provider string, payload []byte, headers map[string][]strin
 		sigHeader := getHeader(headers, "X-Slack-Signature")
 		timestamp := getHeader(headers, "X-Slack-Request-Timestamp")
 		if sigHeader == "" || timestamp == "" {
-			return false, fmt.Errorf("en-têtes Slack manquants")
+			return false, fmt.Errorf("en-tetes Slack 'X-Slack-Signature' ou 'X-Slack-Request-Timestamp' manquants")
 		}
 		return VerifySlackSignature(payload, timestamp, sigHeader, secret)
 
 	default:
-		// Mode générique : teste X-Signature ou X-Webhook-Signature en HMAC-SHA256 hexadécimal
+		// Mode générique : recherche des en-têtes de signature usuels
 		sigHeader := getHeader(headers, "X-Signature")
 		if sigHeader == "" {
 			sigHeader = getHeader(headers, "X-Webhook-Signature")
@@ -65,13 +79,17 @@ func VerifySignature(provider string, payload []byte, headers map[string][]strin
 			sigHeader = getHeader(headers, "Signature")
 		}
 		if sigHeader == "" {
-			return false, fmt.Errorf("en-tête de signature manquant")
+			return false, fmt.Errorf("aucun en-tete de signature valide detecte (X-Signature, X-Webhook-Signature, Signature)")
 		}
 		return VerifyGenericHMACSHA256(payload, sigHeader, secret)
 	}
 }
 
-// VerifyStripeSignature vérifie la signature HMAC-SHA256 envoyée par Stripe (format t=timestamp,v1=hash).
+// VerifyStripeSignature valide une signature au format Stripe v1 (t=timestamp,v1=hash).
+//
+// L'algorithme calcule : HMAC-SHA256(secret, timestamp + "." + payload).
+// La comparaison utilise hmac.Equal afin de garantir un temps d'exécution constant
+// et d'éliminer les vulnérabilités aux attaques temporelles.
 func VerifyStripeSignature(payload []byte, header string, secret string, tolerance time.Duration) (bool, error) {
 	var timestampStr string
 	var signatures []string
@@ -91,7 +109,7 @@ func VerifyStripeSignature(payload []byte, header string, secret string, toleran
 	}
 
 	if timestampStr == "" || len(signatures) == 0 {
-		return false, fmt.Errorf("format de signature Stripe invalide")
+		return false, fmt.Errorf("format de signature Stripe invalide (attendu t=...,v1=...)")
 	}
 
 	timestampInt, err := strconv.ParseInt(timestampStr, 10, 64)
@@ -99,15 +117,14 @@ func VerifyStripeSignature(payload []byte, header string, secret string, toleran
 		return false, fmt.Errorf("horodatage Stripe invalide : %w", err)
 	}
 
-	// Vérification de la tolérance temporelle anti-replay
+	// Contrôle de la fenêtre d'anti-rejeu
 	if tolerance > 0 {
 		timestamp := time.Unix(timestampInt, 0)
 		if time.Since(timestamp) > tolerance || timestamp.After(time.Now().Add(tolerance)) {
-			return false, fmt.Errorf("horodatage hors tolérance (délai dépassé)")
+			return false, fmt.Errorf("horodatage hors tolerance : risque d'attaque par rejeu")
 		}
 	}
 
-	// Concaténation : t + "." + payload
 	signedPayload := fmt.Sprintf("%s.%s", timestampStr, string(payload))
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(signedPayload))
@@ -119,14 +136,14 @@ func VerifyStripeSignature(payload []byte, header string, secret string, toleran
 		}
 	}
 
-	return false, fmt.Errorf("signature Stripe non correspondante")
+	return false, fmt.Errorf("la signature Stripe ne correspond pas au secret configure")
 }
 
-// VerifyGitHubSignature vérifie la signature X-Hub-Signature-256 (format: sha256=hex).
+// VerifyGitHubSignature valide une signature GitHub au format HMAC-SHA256 préfixé (sha256=hash).
 func VerifyGitHubSignature(payload []byte, header string, secret string) (bool, error) {
 	prefix := "sha256="
 	if !strings.HasPrefix(header, prefix) {
-		return false, fmt.Errorf("la signature GitHub doit commencer par sha256=")
+		return false, fmt.Errorf("la signature GitHub doit imperativement debuter par 'sha256='")
 	}
 	receivedHex := strings.TrimPrefix(header, prefix)
 
@@ -137,10 +154,10 @@ func VerifyGitHubSignature(payload []byte, header string, secret string) (bool, 
 	if hmac.Equal([]byte(receivedHex), []byte(expectedHex)) {
 		return true, nil
 	}
-	return false, fmt.Errorf("signature GitHub invalide")
+	return false, fmt.Errorf("signature GitHub invalide ou cle secrete incorrecte")
 }
 
-// VerifyShopifySignature vérifie la signature X-Shopify-Hmac-Sha256 (Base64).
+// VerifyShopifySignature valide une signature Shopify encodée en Base64 standard.
 func VerifyShopifySignature(payload []byte, header string, secret string) (bool, error) {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(payload)
@@ -152,7 +169,7 @@ func VerifyShopifySignature(payload []byte, header string, secret string) (bool,
 	return false, fmt.Errorf("signature Shopify invalide")
 }
 
-// VerifySlackSignature vérifie la signature X-Slack-Signature (format: v0=hex, basé sur v0:timestamp:body).
+// VerifySlackSignature valide une signature Slack (v0=hash, basé sur 'v0:timestamp:body').
 func VerifySlackSignature(payload []byte, timestamp string, header string, secret string) (bool, error) {
 	baseString := fmt.Sprintf("v0:%s:%s", timestamp, string(payload))
 	mac := hmac.New(sha256.New, []byte(secret))
@@ -165,7 +182,7 @@ func VerifySlackSignature(payload []byte, timestamp string, header string, secre
 	return false, fmt.Errorf("signature Slack invalide")
 }
 
-// VerifyGenericHMACSHA256 vérifie un HMAC-SHA256 hexadécimal direct.
+// VerifyGenericHMACSHA256 valide un HMAC-SHA256 direct au format hexadécimal.
 func VerifyGenericHMACSHA256(payload []byte, header string, secret string) (bool, error) {
 	cleanHeader := strings.TrimPrefix(header, "sha256=")
 	cleanHeader = strings.TrimPrefix(cleanHeader, "SHA256=")
@@ -177,9 +194,10 @@ func VerifyGenericHMACSHA256(payload []byte, header string, secret string) (bool
 	if hmac.Equal([]byte(cleanHeader), []byte(expectedHex)) {
 		return true, nil
 	}
-	return false, fmt.Errorf("signature HMAC générique invalide")
+	return false, fmt.Errorf("signature HMAC generique non valide")
 }
 
+// getHeader recherche un en-tête de manière insensible à la casse.
 func getHeader(headers map[string][]string, key string) string {
 	for k, v := range headers {
 		if strings.EqualFold(k, key) && len(v) > 0 {

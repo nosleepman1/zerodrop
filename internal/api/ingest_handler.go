@@ -16,21 +16,19 @@ import (
 	"github.com/nosleepman1/zerodrop/internal/security"
 )
 
-// IngestHandler gère la réception des requêtes webhooks externes sur /in/{slug}.
+// IngestHandler gère la réception des requêtes webhooks externes sur la route /in/{slug}.
 type IngestHandler struct {
 	db  *database.DB
 	hub *hub.Hub
 }
 
-// NewIngestHandler instancie le handler d'ingestion.
+// NewIngestHandler instancie le gestionnaire d'ingestion.
 func NewIngestHandler(db *database.DB, h *hub.Hub) *IngestHandler {
-	return &IngestHandler{
-		db:  db,
-		hub: h,
-	}
+	return &IngestHandler{db: db, hub: h}
 }
 
-// HandleIngest intercepte, vérifie, sauvegarde et retransmet la requête webhook entrante.
+// HandleIngest intercepte, valide cryptographiquement, persiste et diffuse la requête webhook entrante.
+// Répond immédiatement avec un code HTTP 202 Accepted.
 func (h *IngestHandler) HandleIngest(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
@@ -38,10 +36,9 @@ func (h *IngestHandler) HandleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Recherche de l'endpoint correspondant
 	ep, err := h.db.GetEndpointBySlug(slug)
 	if err != nil {
-		http.Error(w, `{"error": "erreur interne lors de la vérification de l'endpoint"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error": "erreur interne lors de la verification de l'endpoint"}`, http.StatusInternalServerError)
 		return
 	}
 	if ep == nil {
@@ -49,35 +46,32 @@ func (h *IngestHandler) HandleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Lecture intégrale du corps brut (limité à 10 Mo par sécurité)
+	// Lecture intégrale du flux d'octets sans troncature (limité à 10 Mo)
 	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
 	if err != nil {
-		http.Error(w, `{"error": "impossible de lire le corps de la requête"}`, http.StatusBadRequest)
+		http.Error(w, `{"error": "impossible de lire le corps de la requete"}`, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
-	// 3. Extraction de l'adresse IP client
 	clientIP := r.RemoteAddr
 	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 		clientIP = strings.Split(forwarded, ",")[0]
 	} else if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
 		clientIP = realIP
 	} else {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err == nil {
+		host, _, splitErr := net.SplitHostPort(r.RemoteAddr)
+		if splitErr == nil {
 			clientIP = host
 		}
 	}
 
-	// 4. Vérification cryptographique de la signature si un secret est configuré
 	var signatureValid *bool
 	if ep.Secret != "" {
 		valid, _ := security.VerifySignature(ep.Provider, bodyBytes, r.Header, ep.Secret)
 		signatureValid = &valid
 	}
 
-	// 5. Construction de l'objet WebhookRequest
 	reqID := "req_" + uuid.New().String()[:12]
 	now := time.Now().UTC()
 
@@ -97,22 +91,16 @@ func (h *IngestHandler) HandleIngest(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:      now,
 	}
 
-	// 6. Sauvegarde immédiate dans la base SQLite
 	if err := h.db.SaveWebhookRequest(webhookReq); err != nil {
-		http.Error(w, `{"error": "impossible de persister la requête"}`, http.StatusInternalServerError)
+		http.Error(w, `{"error": "echec de persistance de la requete"}`, http.StatusInternalServerError)
 		return
 	}
 
-	// 7. Diffusion temps réel
 	if h.hub != nil {
-		// Broadcast aux dashboards connectés
 		h.hub.BroadcastEvent(models.EventNewRequest, webhookReq)
-
-		// Forward automatique au tunnel CLI s'il est actif
 		_ = h.hub.ForwardToTunnel(ep.Slug, webhookReq)
 	}
 
-	// 8. Réponse immédiate 202 Accepted
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{

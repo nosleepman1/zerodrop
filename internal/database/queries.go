@@ -10,11 +10,11 @@ import (
 	"github.com/nosleepman1/zerodrop/internal/models"
 )
 
-// ==========================================
-// Opérations sur les Endpoints
-// ==========================================
+// =========================================================================
+// Opérations CRUD sur les Endpoints
+// =========================================================================
 
-// CreateEndpoint crée un nouveau point de réception de webhooks.
+// CreateEndpoint insère un nouvel endpoint dans la base de données.
 func (db *DB) CreateEndpoint(payload models.CreateEndpointPayload) (*models.Endpoint, error) {
 	id := "ep_" + uuid.New().String()[:12]
 	now := time.Now().UTC()
@@ -31,7 +31,7 @@ func (db *DB) CreateEndpoint(payload models.CreateEndpointPayload) (*models.Endp
 
 	_, err := db.Exec(query, id, payload.Name, payload.Slug, payload.Secret, provider, payload.ForwardURL, payload.Description, now, now)
 	if err != nil {
-		return nil, fmt.Errorf("impossible de créer l'endpoint : %w", err)
+		return nil, fmt.Errorf("impossible de creer l'endpoint : %w", err)
 	}
 
 	return &models.Endpoint{
@@ -47,7 +47,7 @@ func (db *DB) CreateEndpoint(payload models.CreateEndpointPayload) (*models.Endp
 	}, nil
 }
 
-// GetEndpointBySlug récupère un endpoint à partir de son slug d'URL (ex: /in/mon-slug).
+// GetEndpointBySlug récupère un endpoint à partir de son slug d'URL (/in/{slug}).
 func (db *DB) GetEndpointBySlug(slug string) (*models.Endpoint, error) {
 	query := `
 		SELECT id, name, slug, secret, provider, forward_url, description, created_at, updated_at
@@ -65,7 +65,7 @@ func (db *DB) GetEndpointBySlug(slug string) (*models.Endpoint, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la recherche de l'endpoint : %w", err)
+		return nil, fmt.Errorf("erreur lors de la recherche de l'endpoint par slug : %w", err)
 	}
 
 	if secret.Valid {
@@ -81,7 +81,7 @@ func (db *DB) GetEndpointBySlug(slug string) (*models.Endpoint, error) {
 	return ep, nil
 }
 
-// GetEndpointByID récupère un endpoint à partir de son identifiant unique.
+// GetEndpointByID récupère un endpoint à partir de son identifiant unique interne.
 func (db *DB) GetEndpointByID(id string) (*models.Endpoint, error) {
 	query := `
 		SELECT id, name, slug, secret, provider, forward_url, description, created_at, updated_at
@@ -99,7 +99,7 @@ func (db *DB) GetEndpointByID(id string) (*models.Endpoint, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la recherche de l'endpoint : %w", err)
+		return nil, fmt.Errorf("erreur lors de la recherche de l'endpoint par ID : %w", err)
 	}
 
 	if secret.Valid {
@@ -115,7 +115,7 @@ func (db *DB) GetEndpointByID(id string) (*models.Endpoint, error) {
 	return ep, nil
 }
 
-// ListEndpoints retourne la liste de tous les endpoints configurés.
+// ListEndpoints retourne l'ensemble des endpoints ordonnés par date de création antéchronologique.
 func (db *DB) ListEndpoints() ([]models.Endpoint, error) {
 	query := `
 		SELECT id, name, slug, secret, provider, forward_url, description, created_at, updated_at
@@ -125,7 +125,7 @@ func (db *DB) ListEndpoints() ([]models.Endpoint, error) {
 
 	rows, err := db.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération des endpoints : %w", err)
+		return nil, fmt.Errorf("erreur lors de la recuperation de la liste des endpoints : %w", err)
 	}
 	defer rows.Close()
 
@@ -154,7 +154,7 @@ func (db *DB) ListEndpoints() ([]models.Endpoint, error) {
 	return endpoints, nil
 }
 
-// DeleteEndpoint supprime un endpoint et ses requêtes associées en cascade.
+// DeleteEndpoint supprime un endpoint et supprime en cascade l'ensemble des requêtes associées.
 func (db *DB) DeleteEndpoint(id string) error {
 	_, err := db.Exec("DELETE FROM endpoints WHERE id = ?", id)
 	if err != nil {
@@ -163,11 +163,11 @@ func (db *DB) DeleteEndpoint(id string) error {
 	return nil
 }
 
-// ==========================================
-// Opérations sur les Requêtes Webhooks
-// ==========================================
+// =========================================================================
+// Opérations CRUD sur les Requêtes Webhook
+// =========================================================================
 
-// SaveWebhookRequest persiste une requête entrante dans la base de données.
+// SaveWebhookRequest persiste une requête entrante reçue par la passerelle d'ingestion.
 func (db *DB) SaveWebhookRequest(req models.WebhookRequest) error {
 	headersJSON, err := json.Marshal(req.Headers)
 	if err != nil {
@@ -215,13 +215,13 @@ func (db *DB) SaveWebhookRequest(req models.WebhookRequest) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("erreur lors de la persistance de la requête webhook : %w", err)
+		return fmt.Errorf("erreur lors de la persistance de la requete webhook : %w", err)
 	}
 
 	return nil
 }
 
-// ListWebhookRequests retourne les requêtes selon les filtres fournis (endpoint, recherche, pagination).
+// ListWebhookRequests retourne la liste paginée et filtrée des requêtes capturées.
 func (db *DB) ListWebhookRequests(filter models.RequestListFilter) ([]models.WebhookRequest, error) {
 	query := `
 		SELECT id, endpoint_id, endpoint_slug, method, path, headers, query_params,
@@ -258,7 +258,7 @@ func (db *DB) ListWebhookRequests(filter models.RequestListFilter) ([]models.Web
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la recherche des requêtes : %w", err)
+		return nil, fmt.Errorf("erreur lors de la recuperation des requetes : %w", err)
 	}
 	defer rows.Close()
 
@@ -274,7 +274,7 @@ func (db *DB) ListWebhookRequests(filter models.RequestListFilter) ([]models.Web
 			&req.ContentLength, &req.IPAddress, &sigValid, &req.CreatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("erreur lors de la lecture d'une requête : %w", err)
+			return nil, fmt.Errorf("erreur lors de la lecture d'une requete : %w", err)
 		}
 
 		if headersStr.Valid {
@@ -294,7 +294,7 @@ func (db *DB) ListWebhookRequests(filter models.RequestListFilter) ([]models.Web
 	return requests, nil
 }
 
-// GetWebhookRequestByID récupère une requête spécifique par son identifiant.
+// GetWebhookRequestByID extrait une requête unique avec l'ensemble de ses attributs.
 func (db *DB) GetWebhookRequestByID(id string) (*models.WebhookRequest, error) {
 	query := `
 		SELECT id, endpoint_id, endpoint_slug, method, path, headers, query_params,
@@ -316,7 +316,7 @@ func (db *DB) GetWebhookRequestByID(id string) (*models.WebhookRequest, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la recherche de la requête : %w", err)
+		return nil, fmt.Errorf("erreur lors de la lecture de la requete : %w", err)
 	}
 
 	if headersStr.Valid {
@@ -333,7 +333,7 @@ func (db *DB) GetWebhookRequestByID(id string) (*models.WebhookRequest, error) {
 	return &req, nil
 }
 
-// ClearRequests supprime toutes les requêtes capturées (optionnellement pour un endpoint spécifique).
+// ClearRequests supprime les requêtes capturées, globalement ou pour un endpoint donné.
 func (db *DB) ClearRequests(endpointID string) error {
 	if endpointID != "" {
 		_, err := db.Exec("DELETE FROM webhook_requests WHERE endpoint_id = ?", endpointID)
@@ -343,11 +343,11 @@ func (db *DB) ClearRequests(endpointID string) error {
 	return err
 }
 
-// ==========================================
-// Opérations sur les Replay Logs
-// ==========================================
+// =========================================================================
+// Opérations CRUD sur les Journaux de Rejeu (Replay Logs)
+// =========================================================================
 
-// SaveReplayLog enregistre le résultat d'un rejeu dans la base.
+// SaveReplayLog enregistre les résultats d'un rejeu HTTP.
 func (db *DB) SaveReplayLog(log models.ReplayLog) error {
 	headersJSON, _ := json.Marshal(log.ResponseHeaders)
 
@@ -378,7 +378,7 @@ func (db *DB) SaveReplayLog(log models.ReplayLog) error {
 	return nil
 }
 
-// GetReplaysForRequest récupère l'historique des rejeux pour une requête donnée.
+// GetReplaysForRequest retourne l'historique complet des rejeux associés à une requête.
 func (db *DB) GetReplaysForRequest(requestID string) ([]models.ReplayLog, error) {
 	query := `
 		SELECT id, request_id, target_url, status_code, response_headers,
@@ -390,7 +390,7 @@ func (db *DB) GetReplaysForRequest(requestID string) ([]models.ReplayLog, error)
 
 	rows, err := db.Query(query, requestID)
 	if err != nil {
-		return nil, fmt.Errorf("erreur lors de la récupération des logs de rejeu : %w", err)
+		return nil, fmt.Errorf("erreur lors de la recuperation des logs de rejeu : %w", err)
 	}
 	defer rows.Close()
 
@@ -404,7 +404,7 @@ func (db *DB) GetReplaysForRequest(requestID string) ([]models.ReplayLog, error)
 			&headersStr, &respBody, &log.DurationMs, &errMsg, &log.CreatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("erreur lors de la lecture d'un log de rejeu : %w", err)
+			return nil, fmt.Errorf("erreur lors de la lecture d'un journal de rejeu : %w", err)
 		}
 
 		if headersStr.Valid {
