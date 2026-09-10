@@ -1,0 +1,27 @@
+﻿name: CI & Tests (Self-Hosted)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Validation & Tests sur Self-Hosted Runner
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - name: Recuperation du Code Source
+        uses: actions/checkout@v4
+
+      - name: Build du Frontend React
+        run: |
+          cd ui
+          npm ci
+          npm run build
+
+      - name: Execution des Tests Backend Go
+        run: |
+          go test ./... -v
