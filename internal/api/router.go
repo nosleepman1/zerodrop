@@ -10,6 +10,7 @@ import (
 	"github.com/nosleepman1/zerodrop/internal/database"
 	"github.com/nosleepman1/zerodrop/internal/hub"
 	"github.com/nosleepman1/zerodrop/internal/replay"
+	"github.com/nosleepman1/zerodrop/ui"
 )
 
 // NewRouter configure le routeur Chi principal avec tous les middlewares et routes.
@@ -68,6 +69,9 @@ func NewRouter(db *database.DB, h *hub.Hub, re *replay.Engine) http.Handler {
 			_, _ = w.Write([]byte(`{"status": "healthy", "version": "0.1.0"}`))
 		})
 	})
+
+	// Montage du Dashboard Web React embarqué pour toutes les autres routes
+	r.Mount("/", ui.Handler())
 
 	return r
 }
