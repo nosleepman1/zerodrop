@@ -1,0 +1,29 @@
+﻿# ========================================================
+# Service Systemd pour exécuter ZeroDrop sur Linux VPS
+# ========================================================
+# Emplacement : /etc/systemd/system/zerodrop.service
+# Commandes :
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zerodrop
+#   sudo systemctl status zerodrop
+
+[Unit]
+Description=ZeroDrop Webhook Hub & Replay Engine
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/zerodrop
+ExecStart=/usr/local/bin/zerodrop serve -port 8080 -db /var/www/zerodrop/zerodrop.db
+Restart=always
+RestartSec=5s
+
+# Sécurité & Isolation
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

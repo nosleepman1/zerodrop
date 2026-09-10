@@ -1,0 +1,22 @@
+﻿# ========================================================
+# Configuration Caddy pour ZeroDrop (HTTPS Automatique Let's Encrypt)
+# ========================================================
+# Remplacez 'webhooks.votre-domaine.com' par votre nom de domaine / sous-domaine
+webhooks.votre-domaine.com {
+    # Redirection inverse vers ZeroDrop
+    reverse_proxy 127.0.0.1:8080 {
+        # Support complet des WebSockets (Live Feed & Tunneling)
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Compression automatique
+    encode gzip zstd
+
+    # Logs d'accès
+    log {
+        output file /var/log/caddy/zerodrop_access.log
+    }
+}

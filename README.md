@@ -1,7 +1,7 @@
-# ? ZeroDrop
+﻿# ⚡ ZeroDrop
 
-> **High-Performance Webhook Ingestion, Real-Time Replay Engine & Local Tunnel Gateway.**  
-> Built with Go, SQLite (WAL mode), WebSockets, and a modern embedded React Dashboard.
+> **Passerelle d'Ingestion Webhook Haute Performance, Moteur de Rejeu & Tunneling Local.**  
+> 100% Self-Hosted, Binaire Unique Autonome en Go, SQLite (mode WAL), Hub WebSockets et Dashboard React/Tailwind/Monaco embarqué.
 
 ![ZeroDrop Banner](https://img.shields.io/badge/ZeroDrop-v0.1.0-blueviolet?style=for-the-badge)
 ![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=for-the-badge&logo=go)
@@ -10,58 +10,159 @@
 
 ---
 
-## ?? Key Features
+## 🚀 Pourquoi ZeroDrop ?
 
-- **? Zero Data Loss Ingestion:** Ultra-fast HTTP ingestion gateway capable of handling bursts with instant 202 responses.
-- **?? Interactive Replay Studio:** Replay any captured webhook with a single click, modify payloads/headers, and compare diffs.
-- **?? Real-Time Local Tunneling:** Forward cloud webhooks directly to your \localhost\ services via secure WebSockets.
-- **??? Cryptographic Signature Verification:** Built-in verification for Stripe (HMAC-SHA256), GitHub (HMAC-SHA256), Shopify, and custom secrets.
-- **?? Single Binary Distribution:** Embedded React/Tailwind/Monaco web dashboard inside the compiled Go binary. Zero external runtime dependencies.
-- **?? Embedded Storage:** Powered by high-speed SQLite with Write-Ahead Logging (WAL) for instant search and persistence.
-
----
-
-## ??? Architecture Overview
-
-\\\
-[ Webhook Provider ] (Stripe, GitHub, Shopify, etc.)
-        �
-        ? POST /in/{endpoint_slug}
-+-------------------------------------------------------------+
-� ZeroDrop Ingestion Gateway (Go Engine)                      �
-�  - Instant 202 Accepted                                     �
-�  - Raw Body & Header Preservation                           �
-�  - Cryptographic Signature Verification                     �
-+-------------------------------------------------------------+
-                       �
-                       ?
-+-------------------------------------------------------------+
-� Zero-Loss Storage (SQLite WAL Mode)                         �
-+-------------------------------------------------------------+
-               �                               �
-               ? (Live WebSockets / SSE)       ? (WSS Tunnel)
-+------------------------------+ +----------------------------+
-� Embedded Web Dashboard (UI)  � � ZeroDrop CLI Agent         �
-�  - Real-Time Event Stream    � �  - Forward to localhost    �
-�  - Monaco JSON Editor        � �  - Stream response logs    �
-�  - Payload Mutation & Replay � +----------------------------+
-�  - Diff & Latency Inspection �               �
-+------------------------------+               ?
-                                   [ Local Dev Server ]
-                                      (localhost:3000)
-\\\
+1. **🔒 100% Auto-Hébergé (Self-Hosted & Zéro Coût Cloud) :**  
+   Déployez votre propre instance sur n'importe quel VPS (OVH, Hetzner, DigitalOcean à 3€/mois) ou serveur local. Zéro abonnement SaaS tiers, maîtrise totale de vos données.
+2. **⚡ Performance Brute & Haute Disponibilité :**  
+   Réponse immédiate `202 Accepted` en < 2ms pour encaisser les pics de charge sans jamais bloquer l'émetteur (Stripe, GitHub, Shopify...).
+3. **🛡️ Vérification Cryptographique HMAC :**  
+   Validation automatique intégrée des signatures Stripe (`Stripe-Signature`), GitHub (`X-Hub-Signature-256`), Shopify, Slack et secrets personnalisés.
+4. **📦 Binaire Unique Autonome (Single Binary < 12 Mo) :**  
+   L'interface web React 19 / Monaco Editor est **embarquée directement dans le binaire Go**. Zéro dépendance Node.js sur votre serveur de production.
+5. **🔄 Replay Studio Interactif :**  
+   Rejouez n'importe quelle requête en 1 clic vers votre serveur local ou une URL distante, avec ou sans mutation de payload.
+6. **🔌 Agent de Tunneling Local (`zerodrop listen`) :**  
+   Relayez instantanément vos webhooks distants vers votre `localhost:3000` via une connexion WebSocket sécurisée et résiliente.
 
 ---
 
-## ??? Tech Stack
+## 🏗️ Architecture Globale
 
-- **Core & Backend:** Go (Golang), \gorilla/websocket\ / \
-et/http\, \modernc.org/sqlite\
-- **Frontend / Dashboard:** React 19, Vite, Tailwind CSS, Lucide Icons, Monaco Editor (embedded via \//go:embed\)
-- **CLI / Tunneling Agent:** Go CLI with subcommands (\zerodrop serve\, \zerodrop listen\)
+```
+[ Émetteur Externe ] (Stripe, GitHub, Shopify...)
+        │
+        ▼ POST /in/{endpoint_slug}
+┌─────────────────────────────────────────────────────────────┐
+│ 1. ZeroDrop Ingestion Gateway (Go Engine)                   │
+│    - Réponse immédiate 202 Accepted (< 2ms)                 │
+│    - Vérification cryptographique de signature HMAC         │
+│    - Préservation intégrale des Headers & Body brut         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Base de Données SQLite Ultra-Rapide (Mode WAL Pur Go)    │
+│    - Transactions concurrentes non-bloquantes               │
+│    - Indexation et persistance zero-loss                    │
+└──────────────┬───────────────────────────────┬──────────────┘
+               │                               │
+               ▼ (WebSockets / SSE)            ▼ (WSS Tunnel)
+┌──────────────────────────────┐ ┌────────────────────────────┐
+│ 3. Dashboard Web Embarqué    │ │ 4. ZeroDrop CLI Agent      │
+│  - Flux en direct temps réel │ │  - Forward vers localhost  │
+│  - Éditeur Monaco JSON       │ │  - Logs colorés en console │
+│  - Replay & Diff Studio      │ └─────────────┬──────────────┘
+│  - Export cURL & Types TS    │               │
+└──────────────────────────────┘               ▼
+                                   [ Application Locale Dev ]
+                                      (localhost:3000/api)
+```
 
 ---
 
-## ?? License
+## 🛠️ Guide de Déploiement Self-Hosted
 
-MIT � [nosleepman1](https://github.com/nosleepman1)
+### Option 1 : Déploiement 1-Clic avec Docker Compose (Recommandé)
+
+Créez votre fichier `docker-compose.yml` :
+
+```yaml
+services:
+  zerodrop:
+    image: ghcr.io/nosleepman1/zerodrop:latest
+    # ou build local :
+    # build: .
+    container_name: zerodrop
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=UTC
+```
+
+Lancez le conteneur en arrière-plan :
+```bash
+docker compose up -d
+```
+> Vos données SQLite sont automatiquement conservées dans le dossier `./data/`.
+
+---
+
+### Option 2 : Binaire Natif & Service Systemd (Linux VPS)
+
+1. Téléchargez ou compilez le binaire Linux :
+   ```bash
+   sudo cp bin/zerodrop-linux-amd64 /usr/local/bin/zerodrop
+   sudo chmod +x /usr/local/bin/zerodrop
+   ```
+
+2. Installez le service `systemd` (inclus dans `deploy/zerodrop.service`) :
+   ```bash
+   sudo mkdir -p /var/www/zerodrop
+   sudo cp deploy/zerodrop.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now zerodrop
+   ```
+
+---
+
+### Option 3 : HTTPS Automatique avec Caddy (Recommandé en Production)
+
+Pour recevoir de vrais webhooks depuis Stripe/GitHub, votre serveur doit être accessible en HTTPS.  
+Avec **Caddy**, la génération et le renouvellement des certificats SSL Let's Encrypt sont 100% automatiques :
+
+```caddy
+# /etc/caddy/Caddyfile
+webhooks.votre-domaine.com {
+    reverse_proxy 127.0.0.1:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+```
+
+---
+
+## 💻 Utilisation du CLI Développeur
+
+### 1. Démarrer le serveur et le dashboard web
+```bash
+zerodrop serve -port 8080
+```
+Ouvrez ensuite votre navigateur sur **http://localhost:8080**.
+
+### 2. Démarrer le tunnel local (Relais vers votre machine)
+```bash
+zerodrop listen --forward-to http://localhost:3000/api/webhook --server ws://webhooks.votre-domaine.com
+```
+
+### 3. Simuler un webhook de test en ligne de commande
+```bash
+zerodrop trigger --provider stripe --event payment_intent.succeeded
+zerodrop trigger --provider github --event pull_request.opened
+```
+
+---
+
+## 🔨 Cross-Compilation Locale Multi-OS (Zéro Quota CI)
+
+Vous pouvez générer instantanément tous les binaires exécutables pour Windows, Linux et macOS en local sans consommer de minutes GitHub Actions :
+
+```powershell
+# Sous Windows (PowerShell) :
+.\scripts\build-all.ps1
+
+# Sous Linux / macOS (Bash) :
+./scripts/build-all.sh
+```
+
+---
+
+## 📄 Licence
+
+Projet open-source distribué sous licence MIT © [nosleepman1](https://github.com/nosleepman1).
