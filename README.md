@@ -6,7 +6,7 @@
 [![Version](https://img.shields.io/badge/ZeroDrop-v0.1.0-blueviolet?style=for-the-badge)](https://github.com/nosleepman1/zerodrop)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=for-the-badge&logo=go)](https://golang.org)
 [![Tests](https://img.shields.io/badge/Tests-100%25%20Passed-00C853?style=for-the-badge)](https://github.com/nosleepman1/zerodrop)
-[![Self-Hosted](https://img.shields.io/badge/Self--Hosted-Coût%20Zéro-FF6D00?style=for-the-badge)](https://github.com/nosleepman1/zerodrop)
+[![Self-Hosted CI/CD](https://img.shields.io/badge/CI%2FCD-Self--Hosted%20VM-FF6D00?style=for-the-badge)](https://github.com/nosleepman1/zerodrop)
 [![License](https://img.shields.io/badge/License-MIT-black?style=for-the-badge)](LICENSE)
 
 ---
@@ -20,8 +20,9 @@
 - [5. Moteur Cryptographique & Signatures HMAC](#5-moteur-cryptographique--signatures-hmac)
 - [6. Reference du CLI ZeroDrop](#6-reference-du-cli-zerodrop)
 - [7. Guide de Deploiement & Self-Hosting](#7-guide-de-deploiement--self-hosting)
-- [8. Cross-Compilation Multi-OS](#8-cross-compilation-multi-os)
-- [9. Strategie de Tests & Assurance Qualite](#9-strategie-de-tests--assurance-qualite)
+- [8. CI/CD sur Self-Hosted Runner (VM Privee)](#8-cicd-sur-self-hosted-runner-vm-privee)
+- [9. Cross-Compilation Multi-OS](#9-cross-compilation-multi-os)
+- [10. Strategie de Tests & Assurance Qualite](#10-strategie-de-tests--assurance-qualite)
 
 ---
 
@@ -249,7 +250,38 @@ WantedBy=multi-user.target
 
 ---
 
-## 8. Cross-Compilation Multi-OS
+## 8. CI/CD sur Self-Hosted Runner (VM Privee)
+
+L'integralite de la chaîne d'integration continue et de publication de releases s'execute sur votre **propre machine virtuelle (Self-Hosted Runner)** sans consommer de quota payant GitHub Actions (`runs-on: self-hosted`).
+
+### Installation du Runner sur votre VM Linux en 3 etapes :
+
+1. **Executer le script d'installation automatique :**
+   ```bash
+   chmod +x deploy/setup-self-hosted-runner.sh
+   ./deploy/setup-self-hosted-runner.sh
+   ```
+
+2. **Rattacher le runner a votre repository :**
+   Rendez-vous dans les parametres de votre repository GitHub :  
+   `Settings` -> `Actions` -> `Runners` -> `New self-hosted runner`  
+   Recuperez le jeton de configuration, puis executez :
+   ```bash
+   cd ~/actions-runner
+   ./config.sh --url https://github.com/nosleepman1/zerodrop --token <VOTRE_TOKEN>
+   ```
+
+3. **Demarrer le runner en service d'arriere-plan permanent :**
+   ```bash
+   sudo ./svc.sh install
+   sudo ./svc.sh start
+   ```
+
+> Les workflows `.github/workflows/ci.yml` (tests automatiques sur push/PR) et `.github/workflows/release.yml` (publication de releases avec binaires sur les tags `v*`) s'executeront directement sur votre VM !
+
+---
+
+## 9. Cross-Compilation Multi-OS
 
 Generez l'ensemble des binaires natifs en local sans consommer de minutes GitHub Actions :
 
@@ -270,7 +302,7 @@ Binaires generes dans `./bin/` :
 
 ---
 
-## 9. Strategie de Tests & Assurance Qualite
+## 10. Strategie de Tests & Assurance Qualite
 
 L'ensemble des modules fait l'objet d'une couverture de tests automatisee :
 

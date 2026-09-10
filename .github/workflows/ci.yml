@@ -1,4 +1,4 @@
-﻿name: CI & Tests
+﻿name: CI & Tests (Self-Hosted)
 
 on:
   push:
@@ -8,32 +8,20 @@ on:
 
 jobs:
   test:
-    name: Tests & Validation
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    name: Validation & Tests sur Self-Hosted Runner
+    runs-on: self-hosted
+    timeout-minutes: 10
 
     steps:
-      - name: Checkout Code
+      - name: Recuperation du Code Source
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-          cache: true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Build Frontend
+      - name: Build du Frontend React
         run: |
           cd ui
           npm ci
           npm run build
 
-      - name: Run Backend Tests
-        run: go test ./... -v
+      - name: Execution des Tests Backend Go
+        run: |
+          go test ./... -v

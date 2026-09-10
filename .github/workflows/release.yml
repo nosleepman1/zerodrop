@@ -1,0 +1,35 @@
+﻿name: Release Multi-Plateformes (Self-Hosted)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Publication Release sur Self-Hosted Runner
+    runs-on: self-hosted
+    permissions:
+      contents: write
+
+    steps:
+      - name: Recuperation du Code Source
+        uses: actions/checkout@v4
+
+      - name: Generation des Binaires Multi-Plateformes
+        run: |
+          chmod +x scripts/build-all.sh
+          ./scripts/build-all.sh
+
+      - name: Publication de la Release GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bin/zerodrop-windows-amd64.exe
+            bin/zerodrop-linux-amd64
+            bin/zerodrop-linux-arm64
+            bin/zerodrop-darwin-arm64
+            bin/zerodrop-darwin-amd64
+          generate_release_notes: true
+          draft: false
+          prerelease: false
